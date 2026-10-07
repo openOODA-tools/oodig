@@ -1,0 +1,21 @@
+# Maintainer: openOODA-tools <ops@openooda.org>
+pkgname=oodig-bin
+_pkgname=oodig
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Comprehensive DNS lookup utility querying specific record types (A, AAAA, MX, TXT)."
+arch=('x86_64')
+url="https://github.com/openOODA-tools/oodig"
+license=('Apache-2.0')
+depends=('glibc')
+provides=('oodig')
+conflicts=('oodig')
+source_x86_64=("${url}/releases/download/v${pkgver}/oodig-linux-x86_64"
+               "uninstall.sh::https://raw.githubusercontent.com/openOODA-tools/${_pkgname}/v${pkgver}/uninstall.sh")
+sha256sums_x86_64=('SKIP'
+                   'SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/oodig-linux-x86_64" "${pkgdir}/usr/bin/oodig"
+    install -Dm755 uninstall.sh "${pkgdir}/usr/bin/oodig-uninstall"
+}
