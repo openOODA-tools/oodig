@@ -1,9 +1,9 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oodig-bin
 _pkgname=oodig
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Comprehensive DNS lookup utility querying specific record types (A, AAAA, MX, TXT)."
+pkgdesc="Sovereign DNS lookup and resolver diagnostic utility in pure openOODA."
 arch=('x86_64')
 url="https://github.com/openOODA-tools/oodig"
 license=('Apache-2.0')

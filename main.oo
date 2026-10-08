@@ -1,32 +1,66 @@
 // # oodig Main Entry Point
 //
-// Logline: Comprehensive DNS lookup utility querying specific record types (A, AAAA, MX, TXT).
+// Logline: Sovereign DNS lookup and resolver diagnostic utility querying A, AAAA, MX, TXT, and PTR records.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Demands &FsReadCap, &NetCap, &ProcessCap, and &EnvCap tokens for capability-bounded execution.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oodig operations.
-//   3. Format and output structured results to standard output.
+//   1. Parse command-line options and dispatch --help, --version, --test, or --mcp.
+//   2. Parse nameserver overrides (@server), reverse lookups (-x), and query record types.
+//   3. Ingest systemd-resolved and resolv.conf uplink resolvers under FsReadCap.
+//   4. Execute DNS query under NetCap and render standard DiG, +short, or JSON output.
+
+import "core/dig_types.oo";
+import "core/dig_trace.oo";
+import "core/dig_resolver.oo";
+import "core/dig_format.oo";
+import "render/render_ansi.oo";
+import "render/render_json.oo";
+import "render/synthetic_demo.oo";
+import "ipc/cli_options.oo";
+import "ipc/mcp_server.oo";
+import "anchor.oo";
 
 fn render_help() -> String {
-    return "oodig 0.1.0 (openOODA sovereign network & egress)\n"
-        + "usage: oodig [options] [ARGUMENTS]...\n\n"
-        + "Comprehensive DNS lookup utility querying specific record types (A, AAAA, MX, TXT).\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+    return "oodig 0.2.0 (openOODA sovereign network & egress)\n"
+        + "usage: oodig [@server] [-p port] [domain] [type] [options]\n\n"
+        + "Sovereign DNS lookup and resolver diagnostic utility with streaming MCP surface.\n\n"
+        + "Query Parameters:\n"
+        + "  @server               server to query (default: systemd-resolved 127.0.0.53)\n"
+        + "  -p port               port number to use (default: 53)\n"
+        + "  -x ip                 reverse lookup for IPv4/IPv6 address (PTR record)\n\n"
+        + "Record Types:\n"
+        + "  A, AAAA, MX, TXT, CNAME, NS, SOA, PTR, SRV, CAA, ANY (default: A)\n\n"
+        + "Display Options:\n"
+        + "  +short                concise answer-only output\n"
+        + "  +trace                trace delegation walk from root nameservers\n"
+        + "  +dnssec               request DNSSEC records (RRSIG/DNSKEY)\n"
+        + "  +tcp                  force TCP transport for query\n"
+        + "  +[no]stats            toggle query time and server statistics [default: +stats]\n"
+        + "  +[no]comments         toggle header and status comments [default: +comments]\n"
+        + "  +[no]question         toggle question section [default: +question]\n"
+        + "  +[no]answer           toggle answer section [default: +answer]\n"
+        + "  -j, --json            output formatted as JSON Lines\n"
+        + "  -D, --demo            synthetic multi-record demonstration showcase\n"
+        + "      --color <WHEN>    colorize output: auto, always, never [default: auto]\n"
+        + "      --theme <NAME>    override active oote palette\n"
+        + "      --mcp             run as Model Context Protocol stdio server\n"
+        + "      --test            run internal verification anchor suite\n"
+        + "  -h, --help            display this help and exit\n"
+        + "  -v, --version         output version information and exit\n";
 }
 
 fn render_version() -> String {
-    return "oodig 0.1.0 (openOODA sovereign network & egress)\n";
+    return "DiG 9.18.50 (openOODA sovereign oodig 0.2.0)\n";
 }
 
-fn main(args: List[String]) -> Int {
+fn main(
+    fr: &FsReadCap,
+    net: &NetCap,
+    pr: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Int {
     let num_args: Int = list_len(args);
     let mut i: Int = 0;
 
@@ -40,13 +74,51 @@ fn main(args: List[String]) -> Int {
             print(render_version());
             return 0;
         }
+        if arg == "--test" {
+            if run_all_tests() {
+                println("oodig: internal anchor tests PASSED");
+                return 0;
+            } else {
+                println("oodig: internal anchor tests FAILED");
+                return 1;
+            }
+        }
         if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oodig\"}}\n");
+            run_mcp_server(fr, net);
             return 0;
         }
         i = i + 1;
     }
 
-    print("oodig: sovereign capability-bounded utility ready\n");
-    return 0;
+    let opts: DigOpts = parse_cli_args(args);
+
+    if opts.demo_mode {
+        print(run_synthetic_demo(opts.json_mode, color_enabled(opts.color_mode, false)));
+        return 0;
+    }
+
+    if opts.domain == "" && !opts.is_reverse {
+        print("oodig: no domain specified\nTry 'oodig --help' for more information.\n");
+        return 2;
+    }
+
+    if opts.opt_trace {
+        print(render_trace_output(opts.domain, opts.qtype));
+        return 0;
+    }
+
+    let resp: DnsResponse = execute_dig_query(fr, net, opts);
+
+    if opts.json_mode {
+        print(render_json_response(resp));
+        return if resp.status == "NOERROR" { 0 } else { 1 };
+    }
+
+    if opts.opt_short {
+        print(render_short_output(resp));
+        return if resp.status == "NOERROR" { 0 } else { 1 };
+    }
+
+    print(render_full_dig_output(resp, opts));
+    return if resp.status == "NOERROR" { 0 } else { 1 };
 }

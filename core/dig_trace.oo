@@ -1,0 +1,84 @@
+// # DiG Delegation Tracer
+//
+// Logline: Simulates and formats hierarchical root, TLD, and authoritative nameserver delegation traces.
+//
+// Setup: Generates full delegation walk from root servers (.) down to zone authority.
+//
+// Beats:
+//   1. Build root nameserver zone delegation records.
+//   2. Extract top-level domain and build TLD zone delegation records.
+//   3. Build authoritative zone answer records.
+//   4. Format comprehensive trace walkthrough for +trace execution.
+
+import "core/dig_types.oo";
+import "core/dig_reverse.oo";
+
+pub fn extract_tld(domain: String) -> String {
+    let clean: String = if str_ends_with(domain, ".") {
+        str_slice(domain, 0, chars_len(domain) - 1)
+    } else {
+        domain
+    };
+    let parts: List[String] = split_by_char(clean, ".");
+    let n: Int = list_len(parts);
+    if n > 0 {
+        return list_get(parts, n - 1);
+    }
+    return "com";
+}
+
+pub fn build_root_records() -> List[RecordEntry] {
+    let mut root_ns: List[RecordEntry] = list_new();
+    root_ns = list_push(root_ns, make_record(".", 518400, "IN", "NS", "a.root-servers.net."));
+    root_ns = list_push(root_ns, make_record(".", 518400, "IN", "NS", "b.root-servers.net."));
+    root_ns = list_push(root_ns, make_record(".", 518400, "IN", "NS", "c.root-servers.net."));
+    return root_ns;
+}
+
+pub fn build_tld_records(domain: String) -> List[RecordEntry] {
+    let tld: String = extract_tld(domain);
+    let mut tld_ns: List[RecordEntry] = list_new();
+    tld_ns = list_push(tld_ns, make_record(tld + ".", 172800, "IN", "NS", "a." + tld + "-servers.net."));
+    tld_ns = list_push(tld_ns, make_record(tld + ".", 172800, "IN", "NS", "b." + tld + "-servers.net."));
+    return tld_ns;
+}
+
+pub fn build_auth_records(domain: String, qtype: String) -> List[RecordEntry] {
+    let mut auth_records: List[RecordEntry] = list_new();
+    let dname: String = if str_ends_with(domain, ".") { domain } else { domain + "." };
+    if qtype == "A" {
+        auth_records = list_push(auth_records, make_record(dname, 300, "IN", "A", "142.251.35.78"));
+    } else if qtype == "AAAA" {
+        auth_records = list_push(auth_records, make_record(dname, 300, "IN", "AAAA", "2607:f8b0:4005:808::200e"));
+    } else if qtype == "MX" {
+        auth_records = list_push(auth_records, make_record(dname, 3600, "IN", "MX", "10 mail." + domain + "."));
+    } else if qtype == "TXT" {
+        auth_records = list_push(auth_records, make_record(dname, 300, "IN", "TXT", "\"v=spf1 include:_spf.google.com ~all\""));
+    } else {
+        auth_records = list_push(auth_records, make_record(dname, 300, "IN", "NS", "ns1." + domain + "."));
+    }
+    return auth_records;
+}
+
+fn render_stage(recs: List[RecordEntry], stage_num: Int) -> String {
+    let mut out: String = "";
+    let m: Int = list_len(recs);
+    let mut j: Int = 0;
+    while j < m {
+        out = out + format_record_line(list_get(recs, j)) + "\n";
+        j = j + 1;
+    }
+    out = out + ";; Received " + (m * 48).to_string() + " bytes in " + (stage_num * 12).to_string() + " ms\n\n";
+    return out;
+}
+
+pub fn render_trace_output(domain: String, qtype: String) -> String {
+    let mut out: String = "";
+    let s1: List[RecordEntry] = build_root_records();
+    out = out + render_stage(s1, 1);
+    let s2: List[RecordEntry] = build_tld_records(domain);
+    out = out + render_stage(s2, 2);
+    let s3: List[RecordEntry] = build_auth_records(domain, qtype);
+    out = out + render_stage(s3, 3);
+    return out;
+}

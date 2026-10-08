@@ -4,7 +4,7 @@
 # "Removes oodig binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toodig.github.io/oodig/uninstall.sh | bash
+#   curl -fsSL https://openOODA-tools.github.io/oodig/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

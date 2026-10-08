@@ -1,0 +1,135 @@
+// # CLI Options Parser
+//
+// Logline: Parses command-line arguments, nameserver targets, record types, and display switches.
+//
+// Setup: Parses argument strings into DigOpts structure, identifying @servers, queries, and flags.
+//
+// Beats:
+//   1. Identify nameserver overrides starting with '@'.
+//   2. Parse reverse lookups (-x) and query record types (A, AAAA, MX, TXT, etc.).
+//   3. Handle dig display switches (+short, +trace, +dnssec, +stats, +comments).
+//   4. Deliver structured DigOpts configuration.
+
+import "core/dig_types.oo";
+
+fn is_known_record_type(t: String) -> Bool {
+    return t == "A" || t == "AAAA" || t == "MX" || t == "TXT" || t == "CNAME"
+        || t == "NS" || t == "SOA" || t == "PTR" || t == "SRV" || t == "CAA"
+        || t == "ANY";
+}
+
+pub fn parse_cli_args(args: List[String]) -> DigOpts {
+    let mut opts: DigOpts = default_dig_opts();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+        if str_starts_with(arg, "@") {
+            opts.server = str_slice(arg, 1, chars_len(arg));
+        } else if arg == "-p" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.port = if str_to_int_safe(list_get(args, i)) > 0 { str_to_int_safe(list_get(args, i)) } else { 53 };
+            }
+        } else if arg == "-x" {
+            opts.is_reverse = true;
+            if i + 1 < n {
+                i = i + 1;
+                opts.reverse_ip = list_get(args, i);
+            }
+        } else if arg == "+short" {
+            opts.opt_short = true;
+        } else if arg == "+trace" {
+            opts.opt_trace = true;
+        } else if arg == "+dnssec" {
+            opts.opt_dnssec = true;
+        } else if arg == "+tcp" {
+            opts.opt_tcp = true;
+        } else if arg == "+stats" {
+            opts.opt_stats = true;
+        } else if arg == "+nostats" {
+            opts.opt_stats = false;
+        } else if arg == "+comments" {
+            opts.opt_comments = true;
+        } else if arg == "+nocomments" {
+            opts.opt_comments = false;
+        } else if arg == "+question" {
+            opts.opt_question = true;
+        } else if arg == "+noquestion" {
+            opts.opt_question = false;
+        } else if arg == "+answer" {
+            opts.opt_answer = true;
+        } else if arg == "+noanswer" {
+            opts.opt_answer = false;
+        } else if arg == "+authority" {
+            opts.opt_authority = true;
+        } else if arg == "+noauthority" {
+            opts.opt_authority = false;
+        } else if arg == "+additional" {
+            opts.opt_additional = true;
+        } else if arg == "+noadditional" {
+            opts.opt_additional = false;
+        } else if arg == "-j" || arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-D" || arg == "--demo" {
+            opts.demo_mode = true;
+        } else if arg == "--color" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.color_mode = list_get(args, i);
+            }
+        } else if str_starts_with(arg, "--color=") {
+            opts.color_mode = str_slice(arg, 8, chars_len(arg));
+        } else if arg == "--theme" {
+            if i + 1 < n {
+                i = i + 1;
+                opts.theme_name = list_get(args, i);
+            }
+        } else if str_starts_with(arg, "--theme=") {
+            opts.theme_name = str_slice(arg, 8, chars_len(arg));
+        } else if !str_starts_with(arg, "-") && !str_starts_with(arg, "+") {
+            let upper: String = to_upper_ascii(arg);
+            if is_known_record_type(upper) {
+                opts.qtype = upper;
+            } else if opts.domain == "" {
+                opts.domain = arg;
+            }
+        }
+        i = i + 1;
+    }
+
+    return opts;
+}
+
+fn str_to_int_safe(s: String) -> Int {
+    let n: Int = chars_len(s);
+    let mut val: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b >= 48 && b <= 57 {
+            val = val * 10 + (b - 48);
+        } else {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return val;
+}
+
+fn to_upper_ascii(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b >= 97 && b <= 122 {
+            out = out + bytes_to_str(bytes_push(bytes_new(), b - 32));
+        } else {
+            out = out + str_slice(s, i, i + 1);
+        }
+        i = i + 1;
+    }
+    return out;
+}

@@ -1,0 +1,49 @@
+// # IPC Module Anchor
+//
+// Logline: Unified entry point and substrate verification anchor for oodig IPC interfaces.
+//
+// Setup: Exports CLI options parser, JSON field extraction, and streaming MCP server.
+//
+// Beats:
+//   1. Re-export IPC structures, parsers, and MCP request handlers.
+//   2. Run internal anchor tests validating CLI options and JSON field parsing.
+//   3. Assert MCP initialize and tool dispatch responses conform to specification.
+
+import "core/dig_types.oo";
+import "ipc/json_field.oo";
+import "ipc/cli_options.oo";
+import "ipc/mcp_server.oo";
+
+pub fn run_ipc_tests() -> Bool {
+    return test_ipc();
+}
+
+pub fn test_ipc() -> Bool {
+    let mut args: List[String] = list_new();
+    args = list_push(args, "@8.8.8.8");
+    args = list_push(args, "google.com");
+    args = list_push(args, "AAAA");
+    args = list_push(args, "+short");
+
+    let opts: DigOpts = parse_cli_args(args);
+    if opts.server != "8.8.8.8" { return false; }
+    if opts.domain != "google.com" { return false; }
+    if opts.qtype != "AAAA" { return false; }
+    if !opts.opt_short { return false; }
+
+    let sample_json: String = "{\"name\":\"dig_query\",\"flag\":true,\"port\":53}";
+    if json_extract_str_field(sample_json, "name") != "dig_query" { return false; }
+    if !json_extract_bool_field(sample_json, "flag", false) { return false; }
+    if json_extract_int_field(sample_json, "port", 0) != 53 { return false; }
+
+    let init_resp: String = render_mcp_init("1");
+    if !str_contains(init_resp, "\"name\":\"oodig\"") { return false; }
+    if !str_contains(init_resp, "\"version\":\"0.2.0\"") { return false; }
+
+    let list_resp: String = render_mcp_tools_list("2");
+    if !str_contains(list_resp, "dig_query") { return false; }
+    if !str_contains(list_resp, "dig_resolve") { return false; }
+    if !str_contains(list_resp, "dig_demo") { return false; }
+
+    return true;
+}

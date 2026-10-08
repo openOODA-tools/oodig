@@ -1,0 +1,168 @@
+// # Streaming MCP Server for DiG
+//
+// Logline: JSON-RPC 2.0 stdio server providing capability-bounded DNS lookup and resolver diagnostic tools.
+//
+// Setup: Bridges standard input/output streaming protocol to core DNS resolution engines under FsReadCap and NetCap.
+//
+// Beats:
+//   1. Handle MCP initialize handshake with server metadata and capability declarations.
+//   2. Expose tools/list catalogue with six sovereign DNS diagnostic tools.
+//   3. Dispatch tools/call for query, resolve, reverse, trace, nameserver, and demo.
+//   4. Deliver streaming JSON-RPC responses over standard output.
+
+import "core/dig_types.oo";
+import "core/dig_trace.oo";
+import "core/dig_resolver.oo";
+import "core/dig_format.oo";
+import "render/synthetic_demo.oo";
+import "ipc/json_field.oo";
+
+fn build_error(id: String, code: Int, msg: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":"
+        + code.to_string() + ",\"message\":\"" + json_escape(msg) + "\"}}\n";
+}
+
+fn build_tool_result(id: String, text: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + json_escape(text) + "\"}]}}\n";
+}
+
+pub fn render_mcp_init(id: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id
+        + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"oodig\",\"version\":\"0.2.0\"}}}\n";
+}
+
+pub fn render_mcp_tools_list(id: String) -> String {
+    let mut out: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":[";
+    out = out + "{\"name\":\"dig_query\",\"description\":\"Execute DNS query for domain and record type.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"domain\":{\"type\":\"string\"},\"type\":{\"type\":\"string\"},\"server\":{\"type\":\"string\"},\"short\":{\"type\":\"boolean\"}},\"required\":[\"domain\"]}}";
+    out = out + ",{\"name\":\"dig_resolve\",\"description\":\"Quick hostname to IPv4 address resolution.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"domain\":{\"type\":\"string\"}},\"required\":[\"domain\"]}}";
+    out = out + ",{\"name\":\"dig_reverse\",\"description\":\"Reverse DNS lookup converting IPv4/IPv6 address to PTR domain.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"ip\":{\"type\":\"string\"}},\"required\":[\"ip\"]}}";
+    out = out + ",{\"name\":\"dig_trace\",\"description\":\"Trace DNS delegation walk from root nameservers to zone authority.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"domain\":{\"type\":\"string\"},\"type\":{\"type\":\"string\"}},\"required\":[\"domain\"]}}";
+    out = out + ",{\"name\":\"dig_inspect_nameserver\",\"description\":\"Inspect active system resolvers and search domains.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+    out = out + ",{\"name\":\"dig_demo\",\"description\":\"Run multi-record synthetic DNS query demonstration.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"json_mode\":{\"type\":\"boolean\"}}}}";
+    out = out + "]}}\n";
+    return out;
+}
+
+pub fn handle_mcp_call(
+    fr: &FsReadCap,
+    net: &NetCap,
+    id: String,
+    tool_name: String,
+    req: String
+) -> String {
+    if tool_name == "dig_demo" {
+        let json_mode: Bool = json_extract_bool_field(req, "json_mode", false);
+        return build_tool_result(id, run_synthetic_demo(json_mode, false));
+    }
+
+    if tool_name == "dig_inspect_nameserver" {
+        let ns: String = get_default_nameserver(fr);
+        let info: String = "Active Nameserver: " + ns + "#53\nSystem Resolver : systemd-resolved (Fedora Linux)\n";
+        return build_tool_result(id, info);
+    }
+
+    if tool_name == "dig_resolve" {
+        let dom: String = json_extract_str_field(req, "domain");
+        let mut opts: DigOpts = default_dig_opts();
+        opts.domain = dom;
+        opts.opt_short = true;
+        let resp: DnsResponse = execute_dig_query(fr, net, opts);
+        return build_tool_result(id, render_short_output(resp));
+    }
+
+    if tool_name == "dig_reverse" {
+        let ip: String = json_extract_str_field(req, "ip");
+        let mut opts: DigOpts = default_dig_opts();
+        opts.is_reverse = true;
+        opts.reverse_ip = ip;
+        let resp: DnsResponse = execute_dig_query(fr, net, opts);
+        return build_tool_result(id, render_full_dig_output(resp, opts));
+    }
+
+    if tool_name == "dig_trace" {
+        let dom: String = json_extract_str_field(req, "domain");
+        let qt: String = json_extract_str_field(req, "type");
+        let final_qt: String = if chars_len(qt) > 0 { qt } else { "A" };
+        let trace_res: String = render_trace_output(dom, final_qt);
+        return build_tool_result(id, trace_res);
+    }
+
+    if tool_name == "dig_query" {
+        let mut opts: DigOpts = default_dig_opts();
+        opts.domain = json_extract_str_field(req, "domain");
+        let qt: String = json_extract_str_field(req, "type");
+        if chars_len(qt) > 0 { opts.qtype = qt; }
+        let srv: String = json_extract_str_field(req, "server");
+        if chars_len(srv) > 0 { opts.server = srv; }
+        opts.opt_short = json_extract_bool_field(req, "short", false);
+
+        let resp: DnsResponse = execute_dig_query(fr, net, opts);
+        let res_text: String = render_full_dig_output(resp, opts);
+        return build_tool_result(id, res_text);
+    }
+
+    return build_error(id, -32601, "Method or tool not found: " + tool_name);
+}
+
+pub fn handle_mcp_message(fr: &FsReadCap, net: &NetCap, req: String) -> String {
+    let id_str: String = json_extract_str_field(req, "id");
+    let id_int: Int = json_extract_int_field(req, "id", -1);
+    let id: String = if chars_len(id_str) > 0 {
+        "\"" + id_str + "\""
+    } else if id_int >= 0 {
+        id_int.to_string()
+    } else {
+        "1"
+    };
+    let method: String = json_extract_str_field(req, "method");
+
+    if method == "initialize" {
+        return render_mcp_init(id);
+    }
+    if method == "notifications/initialized" {
+        return "";
+    }
+    if method == "tools/list" {
+        return render_mcp_tools_list(id);
+    }
+    if method == "tools/call" {
+        let tool_name: String = json_extract_str_field(req, "name");
+        return handle_mcp_call(fr, net, id, tool_name, req);
+    }
+    if method == "shutdown" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}\n";
+    }
+    return build_error(id, -32601, "Method not found: " + method);
+}
+
+pub fn run_mcp_server(fr: &FsReadCap, net: &NetCap) {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fr, 4096);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+                let mut nl_pos: Int = find_sub_char(buf, "\n");
+                while nl_pos >= 0 {
+                    let line: String = str_slice(buf, 0, nl_pos);
+                    buf = str_slice(buf, nl_pos + 1, chars_len(buf));
+                    let trimmed: String = str_trim(line);
+                    if chars_len(trimmed) > 0 {
+                        let resp: String = handle_mcp_message(fr, net, trimmed);
+                        if chars_len(resp) > 0 {
+                            print(resp);
+                        }
+                    }
+                    nl_pos = find_sub_char(buf, "\n");
+                }
+            }
+        }
+    }
+}

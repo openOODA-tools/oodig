@@ -1,0 +1,81 @@
+// # DiG Output Formatter
+//
+// Logline: Formats DNS query responses into standard POSIX dig and +short presentation outputs.
+//
+// Setup: Emits standard comments, flags, question, answer, authority, and statistical sections.
+//
+// Beats:
+//   1. Handle +short concise answers output without headers.
+//   2. Format header status line, transaction ID, and protocol flags.
+//   3. Render question, answer, and authority resource record sections.
+//   4. Append server endpoint and round-trip query time statistics.
+
+import "core/dig_types.oo";
+
+pub fn render_short_output(resp: DnsResponse) -> String {
+    let mut out: String = "";
+    let n: Int = list_len(resp.answers);
+    let mut i: Int = 0;
+    while i < n {
+        let rec: RecordEntry = list_get(resp.answers, i);
+        out = out + rec.data + "\n";
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn render_full_dig_output(resp: DnsResponse, opts: DigOpts) -> String {
+    if opts.opt_short {
+        return render_short_output(resp);
+    }
+
+    let mut out: String = "\n; <<>> DiG 9.18.50 <<>> " + resp.question_name + " " + resp.question_type + "\n";
+
+    if opts.opt_comments {
+        out = out + ";; global options: +cmd\n";
+        out = out + ";; Got answer:\n";
+        out = out + ";; ->>HEADER<<- opcode: " + resp.opcode + ", status: " + resp.status + ", id: " + resp.id.to_string() + "\n";
+        let an_cnt: Int = list_len(resp.answers);
+        let ns_cnt: Int = list_len(resp.authorities);
+        let ar_cnt: Int = list_len(resp.additionals);
+        out = out + ";; flags: qr rd ra; QUERY: 1, ANSWER: " + an_cnt.to_string() + ", AUTHORITY: " + ns_cnt.to_string() + ", ADDITIONAL: " + ar_cnt.to_string() + "\n\n";
+
+        out = out + ";; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 65494\n";
+    }
+
+    if opts.opt_question {
+        out = out + ";; QUESTION SECTION:\n";
+        out = out + ";" + resp.question_name + "\t\t\tIN\t" + resp.question_type + "\n\n";
+    }
+
+    if opts.opt_answer && list_len(resp.answers) > 0 {
+        out = out + ";; ANSWER SECTION:\n";
+        let n: Int = list_len(resp.answers);
+        let mut i: Int = 0;
+        while i < n {
+            out = out + format_record_line(list_get(resp.answers, i)) + "\n";
+            i = i + 1;
+        }
+        out = out + "\n";
+    }
+
+    if opts.opt_authority && list_len(resp.authorities) > 0 {
+        out = out + ";; AUTHORITY SECTION:\n";
+        let n: Int = list_len(resp.authorities);
+        let mut i: Int = 0;
+        while i < n {
+            out = out + format_record_line(list_get(resp.authorities, i)) + "\n";
+            i = i + 1;
+        }
+        out = out + "\n";
+    }
+
+    if opts.opt_stats {
+        out = out + ";; Query time: " + resp.query_time_ms.to_string() + " msec\n";
+        out = out + ";; SERVER: " + resp.server + "#" + resp.port.to_string() + "(" + resp.server + ") (UDP)\n";
+        out = out + ";; WHEN: " + resp.timestamp + "\n";
+        out = out + ";; MSG SIZE  rcvd: " + resp.msg_size.to_string() + "\n";
+    }
+
+    return out;
+}

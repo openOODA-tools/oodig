@@ -1,0 +1,140 @@
+// # DiG Types and Data Structures
+//
+// Logline: Data structures representing DNS query options, resource records, and query responses.
+//
+// Setup: Pure type declarations with deterministic defaults and record formatting helpers.
+//
+// Beats:
+//   1. Define RecordEntry structure for individual DNS resource records.
+//   2. Define DnsResponse structure capturing full query results and telemetry.
+//   3. Define DigOpts structure holding CLI flags, query targets, and display switches.
+//   4. Expose default constructors and record formatters.
+
+pub type RecordEntry = struct {
+    name: String,
+    ttl: Int,
+    class_name: String,
+    record_type: String,
+    data: String
+};
+
+pub type DnsResponse = struct {
+    id: Int,
+    status: String,
+    opcode: String,
+    flag_qr: Bool,
+    flag_rd: Bool,
+    flag_ra: Bool,
+    flag_aa: Bool,
+    flag_tc: Bool,
+    question_name: String,
+    question_type: String,
+    answers: List[RecordEntry],
+    authorities: List[RecordEntry],
+    additionals: List[RecordEntry],
+    query_time_ms: Int,
+    server: String,
+    port: Int,
+    timestamp: String,
+    msg_size: Int
+};
+
+pub type DigOpts = struct {
+    server: String,
+    port: Int,
+    domain: String,
+    qtype: String,
+    is_reverse: Bool,
+    reverse_ip: String,
+    opt_short: Bool,
+    opt_trace: Bool,
+    opt_dnssec: Bool,
+    opt_tcp: Bool,
+    opt_stats: Bool,
+    opt_comments: Bool,
+    opt_question: Bool,
+    opt_answer: Bool,
+    opt_authority: Bool,
+    opt_additional: Bool,
+    json_mode: Bool,
+    demo_mode: Bool,
+    color_mode: String,
+    theme_name: String
+};
+
+pub fn default_dig_opts() -> DigOpts {
+    return DigOpts {
+        server: "",
+        port: 53,
+        domain: "",
+        qtype: "A",
+        is_reverse: false,
+        reverse_ip: "",
+        opt_short: false,
+        opt_trace: false,
+        opt_dnssec: false,
+        opt_tcp: false,
+        opt_stats: true,
+        opt_comments: true,
+        opt_question: true,
+        opt_answer: true,
+        opt_authority: true,
+        opt_additional: true,
+        json_mode: false,
+        demo_mode: false,
+        color_mode: "auto",
+        theme_name: "ember"
+    };
+}
+
+pub fn make_record(
+    name: String,
+    ttl: Int,
+    class_name: String,
+    record_type: String,
+    data: String
+) -> RecordEntry {
+    return RecordEntry {
+        name: name,
+        ttl: ttl,
+        class_name: class_name,
+        record_type: record_type,
+        data: data
+    };
+}
+
+pub fn empty_dns_response(domain: String, qtype: String) -> DnsResponse {
+    return DnsResponse {
+        id: 12345,
+        status: "NOERROR",
+        opcode: "QUERY",
+        flag_qr: true,
+        flag_rd: true,
+        flag_ra: true,
+        flag_aa: false,
+        flag_tc: false,
+        question_name: domain,
+        question_type: qtype,
+        answers: list_new(),
+        authorities: list_new(),
+        additionals: list_new(),
+        query_time_ms: 0,
+        server: "127.0.0.53",
+        port: 53,
+        timestamp: "Thu Oct 08 04:00:00 HST 2026",
+        msg_size: 40
+    };
+}
+
+pub fn format_record_line(rec: RecordEntry) -> String {
+    let mut out: String = rec.name;
+    let nlen: Int = chars_len(rec.name);
+    let tab_count: Int = if nlen < 8 { 3 } else if nlen < 16 { 2 } else { 1 };
+    let mut i: Int = 0;
+    while i < tab_count {
+        out = out + "\t";
+        i = i + 1;
+    }
+    out = out + rec.ttl.to_string() + "\t" + rec.class_name + "\t" + rec.record_type + "\t" + rec.data;
+    return out;
+}

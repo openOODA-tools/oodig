@@ -1,0 +1,57 @@
+// # Core Module Anchor
+//
+// Logline: Unified entry point and substrate verification anchor for oodig core DNS resolution engines.
+//
+// Setup: Exports DNS types, reverse pointer math, delegation tracer, resolver, and formatter.
+//
+// Beats:
+//   1. Re-export dig types, reverse transforms, tracer, resolver, and formatter.
+//   2. Run deterministic internal anchor tests validating reverse DNS and record formatting.
+//   3. Assert +short answer rendering and trace delegation section assembly.
+
+import "core/dig_types.oo";
+import "core/dig_reverse.oo";
+import "core/dig_trace.oo";
+import "core/dig_resolver.oo";
+import "core/dig_format.oo";
+
+pub fn run_core_tests() -> Bool {
+    return test_core();
+}
+
+pub fn test_core() -> Bool {
+    // 1. Test reverse IPv4 to ARPA conversion
+    if !is_ipv4("142.251.35.78") { return false; }
+    if is_ipv4("999.1.1") { return false; }
+    let arpa: String = ipv4_to_arpa("142.251.35.78");
+    if arpa != "78.35.251.142.in-addr.arpa." { return false; }
+
+    // 2. Test trace delegation extraction
+    let tld: String = extract_tld("openooda.org");
+    if tld != "org" { return false; }
+    let trace_out: String = render_trace_output("example.com", "A");
+    if !str_contains(trace_out, "root-servers.net") { return false; }
+
+    // 3. Test resolv.conf parser
+    let mock_resolv: String = "# resolv\nnameserver 127.0.0.53\nnameserver 1.1.1.1\nsearch domain.local\n";
+    let ns: List[String] = parse_resolv_conf(mock_resolv);
+    if list_len(ns) != 2 { return false; }
+    if list_get(ns, 0) != "127.0.0.53" { return false; }
+    if list_get(ns, 1) != "1.1.1.1" { return false; }
+
+    // 4. Test response formatting
+    let mut resp: DnsResponse = empty_dns_response("example.com.", "A");
+    resp.answers = list_push(resp.answers, make_record("example.com.", 300, "IN", "A", "93.184.216.34"));
+
+    let short_str: String = render_short_output(resp);
+    if str_trim(short_str) != "93.184.216.34" { return false; }
+
+    let mut opts: DigOpts = default_dig_opts();
+    opts.domain = "example.com";
+    let full_str: String = render_full_dig_output(resp, opts);
+    if !str_contains(full_str, "ANSWER SECTION:") { return false; }
+    if !str_contains(full_str, "93.184.216.34") { return false; }
+    if !str_contains(full_str, "Query time:") { return false; }
+
+    return true;
+}

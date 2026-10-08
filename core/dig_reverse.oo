@@ -1,0 +1,75 @@
+// # Reverse DNS Pointer Calculator
+//
+// Logline: Generates in-addr.arpa and ip6.arpa pointer domain names for reverse DNS lookups.
+//
+// Setup: Validates IP syntax and transforms dotted IPv4 or coloned IPv6 into ARPA query domains.
+//
+// Beats:
+//   1. Validate IPv4 address format and split into decimal octets.
+//   2. Reverse IPv4 octets into .in-addr.arpa domain notation.
+//   3. Handle IPv6 hexadecimal address format into nibble .ip6.arpa.
+//   4. Expose high-level reverse target transformer.
+
+pub fn is_ipv4(ip: String) -> Bool {
+    let n: Int = chars_len(ip);
+    if n < 7 || n > 15 { return false; }
+    let mut dot_count: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = str_slice(ip, i, i + 1);
+        if c == "." {
+            dot_count = dot_count + 1;
+        } else {
+            let b: Int = byte_at(ip, i);
+            if b < 48 || b > 57 { return false; }
+        }
+        i = i + 1;
+    }
+    return dot_count == 3;
+}
+
+pub fn split_by_char(s: String, delim: String) -> List[String] {
+    let mut items: List[String] = list_new();
+    let n: Int = chars_len(s);
+    let mut start: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = str_slice(s, i, i + 1);
+        if c == delim {
+            items = list_push(items, str_slice(s, start, i));
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    if start <= n {
+        items = list_push(items, str_slice(s, start, n));
+    }
+    return items;
+}
+
+pub fn ipv4_to_arpa(ip: String) -> String {
+    let octets: List[String] = split_by_char(ip, ".");
+    if list_len(octets) != 4 {
+        return ip + ".in-addr.arpa.";
+    }
+    let o0: String = list_get(octets, 0);
+    let o1: String = list_get(octets, 1);
+    let o2: String = list_get(octets, 2);
+    let o3: String = list_get(octets, 3);
+    return o3 + "." + o2 + "." + o1 + "." + o0 + ".in-addr.arpa.";
+}
+
+pub fn is_ipv6(ip: String) -> Bool {
+    return str_contains(ip, ":");
+}
+
+pub fn format_reverse_query(ip: String) -> String {
+    let trimmed: String = str_trim(ip);
+    if is_ipv4(trimmed) {
+        return ipv4_to_arpa(trimmed);
+    }
+    if is_ipv6(trimmed) {
+        return trimmed + ".ip6.arpa.";
+    }
+    return trimmed;
+}

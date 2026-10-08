@@ -1,0 +1,73 @@
+// # JSON Serializer for DNS Telemetry
+//
+// Logline: Emits structured JSON representation of DNS query results, answers, and server metrics.
+//
+// Setup: Pure JSON formatter serializing DnsResponse and RecordEntry records to standard output.
+//
+// Beats:
+//   1. Escape strings and special control characters safely.
+//   2. Serialize lists of RecordEntry into JSON arrays.
+//   3. Format question and response headers.
+//   4. Emit complete JSON telemetry object for agent consumption.
+
+import "core/dig_types.oo";
+
+pub fn escape_json(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = str_slice(s, i, i + 1);
+        if c == "\"" {
+            out = out + "\\\"";
+        } else if c == "\\" {
+            out = out + "\\\\";
+        } else if c == "\n" {
+            out = out + "\\n";
+        } else if c == "\t" {
+            out = out + "\\t";
+        } else if c == "\r" {
+            out = out + "\\r";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn record_list_to_json(recs: List[RecordEntry]) -> String {
+    let mut s: String = "[";
+    let n: Int = list_len(recs);
+    let mut i: Int = 0;
+    while i < n {
+        if i > 0 { s = s + ","; }
+        let r: RecordEntry = list_get(recs, i);
+        s = s + "{\"name\":\"" + escape_json(r.name) + "\","
+            + "\"ttl\":" + r.ttl.to_string() + ","
+            + "\"class\":\"" + escape_json(r.class_name) + "\","
+            + "\"type\":\"" + escape_json(r.record_type) + "\","
+            + "\"data\":\"" + escape_json(r.data) + "\"}";
+        i = i + 1;
+    }
+    s = s + "]";
+    return s;
+}
+
+pub fn render_json_response(resp: DnsResponse) -> String {
+    let mut s: String = "{";
+    s = s + "\"tool\":\"oodig\",\"version\":\"0.2.0\",";
+    s = s + "\"id\":" + resp.id.to_string() + ",";
+    s = s + "\"status\":\"" + escape_json(resp.status) + "\",";
+    s = s + "\"opcode\":\"" + escape_json(resp.opcode) + "\",";
+    s = s + "\"question\":{\"name\":\"" + escape_json(resp.question_name) + "\",\"type\":\"" + escape_json(resp.question_type) + "\"},";
+    s = s + "\"answers\":" + record_list_to_json(resp.answers) + ",";
+    s = s + "\"authorities\":" + record_list_to_json(resp.authorities) + ",";
+    s = s + "\"additionals\":" + record_list_to_json(resp.additionals) + ",";
+    s = s + "\"query_time_ms\":" + resp.query_time_ms.to_string() + ",";
+    s = s + "\"server\":\"" + escape_json(resp.server) + "\",";
+    s = s + "\"port\":" + resp.port.to_string() + ",";
+    s = s + "\"msg_size\":" + resp.msg_size.to_string();
+    s = s + "}\n";
+    return s;
+}

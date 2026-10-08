@@ -1,0 +1,39 @@
+// # Render Module Anchor
+//
+// Logline: Unified entry point and substrate verification anchor for oodig renderers.
+//
+// Setup: Exports ANSI stylers, JSON response serialization, and synthetic demo generators.
+//
+// Beats:
+//   1. Re-export render modules and visual formatters.
+//   2. Run internal anchor tests validating ANSI styling and JSON streaming.
+//   3. Assert proper JSON syntax and demonstration document generation.
+
+import "core/dig_types.oo";
+import "render/render_ansi.oo";
+import "render/render_json.oo";
+import "render/synthetic_demo.oo";
+
+pub fn run_render_tests() -> Bool {
+    return test_render();
+}
+
+pub fn test_render() -> Bool {
+    let raw: String = "openooda.org";
+    let colored: String = style_domain(raw, true);
+    if !str_contains(colored, "\x1b[36m") { return false; }
+
+    let uncolored: String = style_domain(raw, false);
+    if uncolored != raw { return false; }
+
+    let mut resp: DnsResponse = empty_dns_response("example.com.", "A");
+    resp.answers = list_push(resp.answers, make_record("example.com.", 300, "IN", "A", "93.184.216.34"));
+    let j: String = render_json_response(resp);
+    if !str_contains(j, "\"tool\":\"oodig\"") { return false; }
+    if !str_contains(j, "\"93.184.216.34\"") { return false; }
+
+    let demo: String = run_synthetic_demo(false, false);
+    if !str_contains(demo, "SOVEREIGN DNS DIAGNOSTIC SHOWCASE") { return false; }
+
+    return true;
+}

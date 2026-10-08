@@ -26,7 +26,7 @@ Written in 100% pure [openOODA](https://github.com/openOODA).
 
 ### Automated Installer (Linux x86_64 & aarch64)
 ```bash
-curl -fsSL https://openooda-tools.github.io/oodig/install.sh | bash
+curl -fsSL https://openOODA-tools.github.io/oodig/install.sh | bash
 ```
 
 ### Native Package Managers
@@ -37,16 +37,16 @@ yay -S oodig-bin
 cd packaging/arch && makepkg -si
 
 # Debian / Ubuntu (.deb)
-curl -fsSL https://openooda-tools.github.io/oodig/install.sh | bash -s -- --deb
+curl -fsSL https://openOODA-tools.github.io/oodig/install.sh | bash -s -- --deb
 
 # Fedora / RHEL (.rpm)
-curl -fsSL https://openooda-tools.github.io/oodig/install.sh | bash -s -- --rpm
+curl -fsSL https://openOODA-tools.github.io/oodig/install.sh | bash -s -- --rpm
 ```
 
 ### Uninstallation
 ```bash
 oodig-uninstall
-# or: curl -fsSL https://openooda-tools.github.io/oodig/uninstall.sh | bash
+# or: curl -fsSL https://openOODA-tools.github.io/oodig/uninstall.sh | bash
 ```
 
 ---
@@ -54,17 +54,27 @@ oodig-uninstall
 ## 2. CLI Usage
 
 ```
-usage: oodig [options] [ARGUMENTS]...
+usage: oodig [@server] [-p port] [name] [type] [options]
 
-Comprehensive DNS lookup utility querying specific record types (A, AAAA, MX, TXT).
+Sovereign DNS lookup and resolver diagnostic utility in pure openOODA.
 
-Options:
-  -h, --help           display this help and exit
-  -v, --version        output version information and exit
-      --json           output formatted as JSON Lines
-      --color <WHEN>   colorize output: auto, always, never [default: auto]
-      --theme <NAME>   override active oote palette
-      --mcp            run as Model Context Protocol stdio server
+Query Options:
+  @server              Server to query (IP or hostname)
+  -p port              Port number to query [default: 53]
+  -x ip                Reverse lookup helper (in-addr.arpa)
+  +short               Concise output mode
+  +trace               Recursive root-to-authoritative trace
+  +tcp                 Use TCP instead of UDP
+  +dnssec              Request DNSSEC records (DO bit)
+  -D, --demo           Run synthetic multi-record DNS query showcase
+
+General Options:
+  -h, --help           Display this help and exit
+  -v, --version        Output version information and exit
+  -j, --json           Output formatted as JSON
+      --color <WHEN>   Colorize output: auto, always, never [default: auto]
+      --theme <NAME>   Override active oote palette
+      --mcp            Run as Model Context Protocol stdio server
 ```
 
 ---
@@ -80,6 +90,13 @@ Options:
 ## 4. Model Context Protocol (MCP)
 
 When invoked with `--mcp`, `oodig` runs a JSON-RPC 2.0 stdio server providing structured tools for AI coding agents:
+
+* `dig_query`: Perform standard DNS query for domain name and record type (A, AAAA, MX, TXT, NS, CNAME, SOA, PTR).
+* `dig_resolve`: High-level name resolution returning concise address list.
+* `dig_reverse`: Reverse DNS lookup for an IPv4 address to PTR domain.
+* `dig_trace`: Hierarchical DNS resolution trace from root servers to authoritative answers.
+* `dig_inspect_nameserver`: Inspect local resolver configuration from systemd-resolved / resolv.conf.
+* `dig_demo`: Return complete synthetic showcase demonstrating diverse DNS answer sections.
 
 ```bash
 oodig --mcp

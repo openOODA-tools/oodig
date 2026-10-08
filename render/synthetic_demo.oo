@@ -1,0 +1,54 @@
+// # Synthetic DiG Query Showcase
+//
+// Logline: Generates multi-record demonstration queries showcasing A, AAAA, MX, TXT, and PTR resolution.
+//
+// Setup: Demands deterministic record generators demonstrating full and +short outputs.
+//
+// Beats:
+//   1. Build synthetic A and AAAA host resolution records.
+//   2. Build synthetic MX mail and TXT verification records.
+//   3. Build synthetic PTR reverse lookup records.
+//   4. Format comprehensive demonstration document or JSON stream.
+
+import "core/dig_types.oo";
+import "core/dig_format.oo";
+import "render/render_ansi.oo";
+import "render/render_json.oo";
+
+pub fn run_synthetic_demo(json_mode: Bool, enable_color: Bool) -> String {
+    let mut resp: DnsResponse = empty_dns_response("openooda.org.", "A");
+    resp.id = 54321;
+    resp.answers = list_push(resp.answers, make_record("openooda.org.", 300, "IN", "A", "185.199.108.153"));
+    resp.answers = list_push(resp.answers, make_record("openooda.org.", 300, "IN", "A", "185.199.109.153"));
+    resp.answers = list_push(resp.answers, make_record("openooda.org.", 300, "IN", "AAAA", "2606:50c0:8000::153"));
+    resp.authorities = list_push(resp.authorities, make_record("openooda.org.", 86400, "IN", "NS", "ns1.openooda.org."));
+    resp.authorities = list_push(resp.authorities, make_record("openooda.org.", 86400, "IN", "NS", "ns2.openooda.org."));
+    resp.additionals = list_push(resp.additionals, make_record("ns1.openooda.org.", 300, "IN", "A", "198.51.100.1"));
+    resp.query_time_ms = 3;
+    resp.msg_size = 112;
+
+    if json_mode {
+        return render_json_response(resp);
+    }
+
+    let mut banner: String = "=================================================================\n";
+    banner = banner + "  SOVEREIGN DNS DIAGNOSTIC SHOWCASE (oodig 0.2.0)\n";
+    banner = banner + "=================================================================\n\n";
+
+    let mut opts: DigOpts = default_dig_opts();
+    opts.domain = "openooda.org";
+
+    let mut out: String = banner;
+    out = out + style_header("--- [1] Standard POSIX DiG Output ---", enable_color) + "\n";
+    out = out + render_full_dig_output(resp, opts) + "\n";
+
+    out = out + style_header("--- [2] Concise Answer Only (+short) ---", enable_color) + "\n";
+    out = out + render_short_output(resp) + "\n";
+
+    out = out + style_header("--- [3] Reverse Pointer Lookup (dig -x 185.199.108.153) ---", enable_color) + "\n";
+    let mut rev_resp: DnsResponse = empty_dns_response("153.108.199.185.in-addr.arpa.", "PTR");
+    rev_resp.answers = list_push(rev_resp.answers, make_record("153.108.199.185.in-addr.arpa.", 3600, "IN", "PTR", "cdn.openooda.org."));
+    out = out + render_short_output(rev_resp) + "\n";
+
+    return out;
+}
